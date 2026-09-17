@@ -3,43 +3,78 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WinEvent Analyzer | Windows Crash & Hang Telemetry Monitor</title>
-  <meta name="description" content="Windows Application Crash & Hang Monitoring and Diagnosis System with AI-assisted Telemetry Analysis">
+  <title>WinEvent Analyzer | Windows Application Crash & Hang Monitor</title>
+  <meta name="description" content="Windows Application Crash & Hang Telemetry Monitoring and Diagnosis System with AI-assisted Analysis">
   <link rel="stylesheet" href="/static/css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%3E<text y=%2226%22 font-size=%2226%22>🛡️</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
 </head>
 <body>
 
   <div class="app-container">
-    <!-- Header -->
+    <!-- Top Header -->
     <header class="app-header">
       <div class="brand-area">
         <div class="brand-icon">🛡️</div>
         <div>
           <h1 class="brand-title">WinEvent Analyzer</h1>
-          <p class="brand-subtitle">Windows Application Crash & Hang Telemetry Monitoring System</p>
+          <p class="brand-subtitle">ระบบตรวจจับและวิเคราะห์ Application Crash/Hang จาก Windows Event Log</p>
         </div>
       </div>
 
       <div class="system-status-pills">
         <div class="status-pill">
           <span class="status-indicator"></span>
-          <span>Host: <strong id="sys-host">Detecting...</strong></span>
+          <span>เครื่อง: <strong id="sys-host">Detecting...</strong></span>
         </div>
         <div class="status-pill">
-          <span>Engine: <strong id="sys-engine" style="color: var(--accent-cyan)">PowerShell</strong></span>
+          <span>กลไก: <strong id="sys-engine" style="color: var(--accent-cyan)">PowerShell</strong></span>
         </div>
         <div class="status-pill">
-          <span>Channel: <strong style="color: #e2e8f0;">Application</strong></span>
+          <span>Channel: <strong style="color: #cbd5e1;">Application</strong></span>
         </div>
       </div>
     </header>
 
-    <!-- Interactive Simulation Bar (Live Demo Feature) -->
+    <!-- 1. System Metrics KPI Cards (Clickable) -->
+    <section class="kpi-grid" aria-label="System Metrics">
+      <div class="kpi-card" id="kpi-total" title="คลิกเพื่อดูเหตุการณ์ทั้งหมด">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-content">
+          <span class="kpi-label">เหตุการณ์ทั้งหมด (Total)</span>
+          <span class="kpi-value" id="val-total">-</span>
+        </div>
+      </div>
+
+      <div class="kpi-card kpi-crash" id="kpi-crash" title="คลิกเพื่อกรองดูเฉพาะ Crash">
+        <div class="kpi-icon">💥</div>
+        <div class="kpi-content">
+          <span class="kpi-label">แอปแครช (Crash ID 1000)</span>
+          <span class="kpi-value" id="val-crash">-</span>
+        </div>
+      </div>
+
+      <div class="kpi-card kpi-hang" id="kpi-hang" title="คลิกเพื่อกรองดูเฉพาะ Hang">
+        <div class="kpi-icon">⏳</div>
+        <div class="kpi-content">
+          <span class="kpi-label">แอปค้าง (Hang ID 1002)</span>
+          <span class="kpi-value" id="val-hang">-</span>
+        </div>
+      </div>
+
+      <div class="kpi-card" id="kpi-top-app" title="แอปที่มีปัญหาบ่อยที่สุด">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-content">
+          <span class="kpi-label">แอปที่พบปัญหาบ่อยสุด</span>
+          <span class="kpi-value" id="val-top-app" style="font-size: 1.15rem;">-</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Interactive Simulator Panel -->
     <section class="simulation-bar" aria-label="Interactive Simulator">
       <div class="sim-info">
         <span class="sim-badge">⚡ Live Demo</span>
-        <span class="sim-text">จำลองเหตุการณ์ใน Isolated Child Process เพื่อทดสอบการตรวจจับสด:</span>
+        <span class="sim-text">กดจำลองข้อผิดพลาดใน Process ย่อยเพื่อทดสอบการตรวจจับของ OS แบบสดๆ:</span>
       </div>
 
       <div class="sim-buttons">
@@ -58,54 +93,115 @@
       </div>
     </section>
 
-    <!-- Toolbar & Filters -->
+    <!-- 3. Advanced Multi-Facet Filter Toolbar -->
     <nav class="control-toolbar" aria-label="Filters and Search">
-      <div class="filter-group">
-        <button type="button" class="tab-btn active" data-type="ALL" id="tab-all">All Events</button>
-        <button type="button" class="tab-btn" data-type="CRASH" id="tab-crash">Crash (ID 1000)</button>
-        <button type="button" class="tab-btn" data-type="HANG" id="tab-hang">Hang (ID 1002)</button>
-      </div>
-
-      <div class="filter-group" style="flex: 1; justify-content: flex-end;">
-        <div class="search-box">
-          <span>🔍</span>
-          <input type="text" id="search-input" placeholder="Filter by App, DLL, or Code..." autocomplete="off">
+      <div class="toolbar-row-top">
+        <!-- Type Pills -->
+        <div class="filter-group">
+          <span class="filter-label-inline">ประเภท:</span>
+          <button type="button" class="tab-btn active" data-type="ALL" id="tab-all">All (<span id="count-all">0</span>)</button>
+          <button type="button" class="tab-btn" data-type="CRASH" id="tab-crash">💥 Crash (<span id="count-crash">0</span>)</button>
+          <button type="button" class="tab-btn" data-type="HANG" id="tab-hang">⏳ Hang (<span id="count-hang">0</span>)</button>
         </div>
 
-        <select id="time-filter" class="select-control" aria-label="Time Lookback Filter">
-          <option value="24">Last 24 Hours</option>
-          <option value="48" selected>Last 48 Hours</option>
-          <option value="168">Last 7 Days (168h)</option>
-          <option value="720">Last 30 Days (720h)</option>
-        </select>
+        <!-- Category Dropdown -->
+        <div class="filter-group">
+          <span class="filter-label-inline">หมวดหมู่ปัญหา:</span>
+          <select id="category-filter" class="select-control" aria-label="Category Filter">
+            <option value="ALL">ทุกหมวดหมู่ (All Categories)</option>
+            <option value="MEMORY_VIOLATION">🧠 หน่วยความจำ (Memory / Access Violation)</option>
+            <option value="APPLICATION_HANG">⏳ โปรแกรมค้าง (UI Message Loop Freeze)</option>
+            <option value="RUNTIME_FRAMEWORK">⚙️ รันไทม์ (.NET / Visual C++)</option>
+            <option value="SECURITY_BUFFER">🛡️ ความปลอดภัย (Buffer Overrun / Abort)</option>
+            <option value="DEBUG_ASSERTION">🛑 จุดตรวจสอบ (Breakpoint / Anti-Cheat)</option>
+            <option value="CPU_HARDWARE">⚡ ซีพียูและฮาร์ดแวร์ (CPU / Misalignment)</option>
+          </select>
+        </div>
+
+        <!-- Time Window Dropdown -->
+        <div class="filter-group">
+          <span class="filter-label-inline">ช่วงเวลา:</span>
+          <select id="time-filter" class="select-control" aria-label="Time Lookback Filter">
+            <option value="24">ย้อนหลัง 24 ชั่วโมง</option>
+            <option value="48" selected>ย้อนหลัง 48 ชั่วโมง</option>
+            <option value="168">ย้อนหลัง 7 วัน (168 ชม.)</option>
+            <option value="720">ย้อนหลัง 30 วัน (720 ชม.)</option>
+          </select>
+        </div>
+
+        <!-- Sort Control -->
+        <div class="filter-group">
+          <span class="filter-label-inline">เรียงลำดับ:</span>
+          <select id="sort-filter" class="select-control" aria-label="Sort Order">
+            <option value="time_desc">ล่าสุดขึ้นก่อน</option>
+            <option value="time_asc">เก่าสุดขึ้นก่อน</option>
+            <option value="app_asc">ชื่อโปรแกรม (A-Z)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="toolbar-row-bottom">
+        <!-- Live Search -->
+        <div class="search-box">
+          <span>🔍</span>
+          <input type="text" id="search-input" placeholder="ค้นหาตามชื่อโปรแกรม, โมดูล DLL หรือรหัส Error..." autocomplete="off">
+        </div>
+
+        <button type="button" class="btn-clear" id="btn-clear-filters" title="ล้างตัวกรองทั้งหมด">
+          <span>❌</span> ล้างตัวกรอง
+        </button>
 
         <button type="button" class="btn-refresh" id="btn-refresh">
-          <span>🔄</span> Scan Now
+          <span>🔄</span> สแกนใหม่
         </button>
+      </div>
+
+      <!-- App Chips Bar (Quick Filters by detected application names) -->
+      <div class="app-chips-container" id="app-chips-bar" aria-label="Top Apps Filter">
+        <span class="chips-label">แอปพลิเคชันที่พบ:</span>
+        <div class="chips-list" id="chips-list">
+          <!-- Populated dynamically by app.js -->
+        </div>
       </div>
     </nav>
 
-    <!-- Main Dashboard Grid (2 Columns) -->
+    <!-- 4. Main Dashboard Grid (2 Columns) -->
     <main class="main-dashboard">
       <!-- Left Panel: Event Timeline List -->
       <section class="timeline-panel" aria-label="Events Timeline">
         <div class="timeline-header">
-          <span>DETECTED TELEMETRY LOGS</span>
-          <span id="event-count" style="color: var(--accent-cyan); font-family: var(--font-mono);">0 events</span>
+          <span>รายการเหตุการณ์ในระบบ (TIMELINE)</span>
+          <span id="active-filter-indicator" class="filter-badge">แสดงทั้งหมด</span>
         </div>
         <div id="timeline-list">
           <!-- Populated dynamically by app.js -->
         </div>
       </section>
 
-      <!-- Right Panel: Detailed OS Telemetry Inspection -->
-      <section class="detail-panel" id="detail-container" aria-label="Detailed OS Telemetry">
-        <!-- Populated dynamically by app.js -->
+      <!-- Right Panel: Detailed OS Telemetry Inspection (Tabbed) -->
+      <section class="detail-panel" id="detail-panel" aria-label="Detailed OS Telemetry">
+        <!-- Tabs Navigation -->
+        <div class="detail-tabs">
+          <button type="button" class="detail-tab-btn active" data-tab="tab-overview">
+            <span>📋</span> ภาพรวมและคำวินิจฉัย
+          </button>
+          <button type="button" class="detail-tab-btn" data-tab="tab-telemetry">
+            <span>⚙️</span> ข้อมูลระบบ (OS Telemetry)
+          </button>
+          <button type="button" class="detail-tab-btn" data-tab="tab-raw">
+            <span>🛠️</span> Raw JSON Payload
+          </button>
+        </div>
+
+        <!-- Dynamic Content injected by app.js -->
+        <div id="detail-content" class="detail-content-area">
+          <!-- Empty State by default -->
+        </div>
       </section>
     </main>
   </div>
 
-  <!-- Toast Notification Container -->
+  <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
   <script src="/static/js/app.js"></script>

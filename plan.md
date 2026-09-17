@@ -79,7 +79,7 @@
 | เฟส (Phase) | รายละเอียดงาน | ผลลัพธ์ที่ได้ |
 | :--- | :--- | :--- |
 | **Phase 1: OS Extraction & Test Harness** *(เสร็จสมบูรณ์ 100%)* | พัฒนาระบบดึง Event ID 1000, 1001, 1002 จาก Windows Event Log ด้วย Dual-Engine พร้อม Safe Simulator | ดึงประวัติ Crash และ Hang จริงในเครื่องออกมาเป็น JSON ได้สมบูรณ์ |
-| **Phase 2: Error Mapping & Diagnostic Normalization** | ปรับปรุงพจนานุกรมรหัสข้อผิดพลาด และเตรียม Prompt Schema สำหรับ AI | ระบบเข้าใจรหัส Win32/NTSTATUS ทุกกลุ่ม และพร้อมส่งต่อข้อมูลให้ AI |
+| **Phase 2: Error Mapping & Diagnostic Normalization** *(เสร็จสมบูรณ์ 100%)* | จัดหมวดหมู่รหัส Win32/NTSTATUS เป็น 6 กลุ่มระบบ ระบุระดับ Severity พร้อม Actionable Checklist ออฟไลน์ และเตรียม Prompt Schema สำหรับ AI | ระบบเข้าใจรหัสทุกกลุ่ม มีเช็กลิสต์แนะนำเบื้องต้น และพร้อมส่งต่อข้อมูลให้ AI ใน Phase 3 |
 | **Phase 3: AI-Assisted Diagnosis Engine** | เชื่อมต่อ Gemini API วิเคราะห์อาการแบบ Suggested Diagnosis พร้อมทำ SQLite Cache | ได้รับผลวิเคราะห์ภาษาคนและเช็กลิสต์แนวทางแก้ไขปัญหา |
 | **Phase 4: Backend API & Modern Dashboard** | สร้าง FastAPI endpoints และพัฒนาหน้าเว็บ Dashboard สวยงามใช้งานง่าย | ผู้ใช้เปิดหน้าเว็บ กดสแกน และดูผลการวิเคราะห์แบ่งฝั่งได้ทันที |
 | **Phase 5: Verification & Report** | ทดสอบ End-to-End เดโมการรันจริง และจัดทำรูปเล่มรายงานวิชา OS | โปรเจกต์พร้อมนำเสนอและส่งอาจารย์ |

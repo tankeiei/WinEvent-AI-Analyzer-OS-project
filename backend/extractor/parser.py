@@ -1,19 +1,17 @@
-"""Parser module for converting Windows Event XML into CrashEvent models."""
+"""Parser module for converting Windows Event XML into normalized CrashEvent models."""
 
 import re
 import xml.etree.ElementTree as ET
 from typing import Optional, Dict, Any
 
 from backend.models import CrashEvent
-from backend.extractor.error_codes import normalize_code, lookup_exception
+from backend.extractor.error_codes import normalize_code, lookup_diagnostic
 
 
 def parse_event_xml(xml_str: str) -> Optional[CrashEvent]:
     """
     Parses a single Windows Event XML string into a CrashEvent instance.
-    Supports:
-      - Event ID 1000/1001: Application Error (Crash)
-      - Event ID 1002: Application Hang (Window/Process Freeze)
+    Enriches with diagnostic categories, severities, and actionable checks.
     """
     if not xml_str or not xml_str.strip():
         return None
@@ -71,9 +69,9 @@ def parse_event_xml(xml_str: str) -> Optional[CrashEvent]:
         process_id = get_val("ProcessId", 2, None)
         app_path = get_val("ExeFileName", 5, None)
         report_id = get_val("ReportId", 6, None)
-        hang_type = get_val("HangType", 9, "Application Unresponsive")
+        hang_type = get_val("HangType", 9, "Top level window is idle")
         
-        symbol, meaning = lookup_exception("APPLICATION_HANG")
+        diag = lookup_diagnostic("APPLICATION_HANG")
 
         return CrashEvent(
             event_id=1002,
@@ -87,8 +85,12 @@ def parse_event_xml(xml_str: str) -> Optional[CrashEvent]:
             module_version=None,
             module_path=None,
             exception_code="N/A",
-            exception_symbol=symbol,
-            exception_meaning=meaning,
+            exception_symbol=diag.symbol,
+            category=diag.category,
+            category_label=diag.category_label,
+            severity=diag.severity,
+            exception_meaning=diag.meaning,
+            offline_checks=diag.suggested_checks,
             hang_type=hang_type,
             fault_offset=None,
             process_id=process_id,
@@ -110,7 +112,7 @@ def parse_event_xml(xml_str: str) -> Optional[CrashEvent]:
     report_id = get_val("IntegratorReportId", 12, None)
 
     hex_code = normalize_code(raw_code)
-    symbol, meaning = lookup_exception(hex_code)
+    diag = lookup_diagnostic(hex_code)
 
     if fault_offset and not fault_offset.startswith("0x"):
         fault_offset = f"0x{fault_offset}"
@@ -127,8 +129,12 @@ def parse_event_xml(xml_str: str) -> Optional[CrashEvent]:
         module_version=module_version,
         module_path=module_path,
         exception_code=hex_code,
-        exception_symbol=symbol,
-        exception_meaning=meaning,
+        exception_symbol=diag.symbol,
+        category=diag.category,
+        category_label=diag.category_label,
+        severity=diag.severity,
+        exception_meaning=diag.meaning,
+        offline_checks=diag.suggested_checks,
         hang_type=None,
         fault_offset=fault_offset,
         process_id=process_id,
