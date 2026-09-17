@@ -1,16 +1,16 @@
-"""Event Reader module: extracts Application Error events from Windows Event Log."""
+"""Event Reader module: extracts Application Error and Application Hang events from Windows Event Log."""
 
 import subprocess
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from backend.models import CrashEvent
 from backend.extractor.parser import parse_event_xml
 
 logger = logging.getLogger(__name__)
 
-# Try importing pywin32 for native C-level extraction
+# Check if pywin32 is available for native C-level extraction
 try:
     import win32evtlog
     import win32evtlogutil
@@ -19,19 +19,27 @@ except ImportError:
     HAS_PYWIN32 = False
 
 
-def _fetch_via_pywin32(hours: int, max_events: int) -> List[CrashEvent]:
+def _fetch_via_pywin32(
+    hours: int,
+    max_events: int,
+    event_type: str = "ALL"
+) -> List[CrashEvent]:
     """Extracts events using the native Windows Event Log C-API (pywin32)."""
     if not HAS_PYWIN32:
         return []
 
     events: List[CrashEvent] = []
-    # XPath query: Application channel, Provider 'Application Error', EventID 1000
-    # Time filter: milliseconds since event
     ms_ago = int(hours * 3600 * 1000)
-    query_xpath = (
-        f"*[System[Provider[@Name='Application Error'] and (EventID=1000) "
-        f"and TimeCreated[timediff(@SystemTime) <= {ms_ago}]]]"
-    )
+
+    # Build XPath query based on event_type filter
+    if event_type == "CRASH":
+        provider_clause = "(Provider[@Name='Application Error'] and (EventID=1000 or EventID=1001))"
+    elif event_type == "HANG":
+        provider_clause = "(Provider[@Name='Application Hang'] and (EventID=1002))"
+    else:  # ALL
+        provider_clause = "(Provider[@Name='Application Error'] and (EventID=1000 or EventID=1001)) or (Provider[@Name='Application Hang'] and (EventID=1002))"
+
+    query_xpath = f"*[System[({provider_clause}) and TimeCreated[timediff(@SystemTime) <= {ms_ago}]]]"
 
     try:
         flags = win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection
@@ -53,15 +61,26 @@ def _fetch_via_pywin32(hours: int, max_events: int) -> List[CrashEvent]:
     return events
 
 
-def _fetch_via_powershell(hours: int, max_events: int) -> List[CrashEvent]:
+def _fetch_via_powershell(
+    hours: int,
+    max_events: int,
+    event_type: str = "ALL"
+) -> List[CrashEvent]:
     """Extracts events using PowerShell Get-WinEvent as a reliable, zero-dependency fallback."""
     events: List[CrashEvent] = []
 
-    # PowerShell command to fetch events and wrap each ToXml() with delimiter tags
+    # Map event_type to providers
+    if event_type == "CRASH":
+        providers = "@('Application Error')"
+    elif event_type == "HANG":
+        providers = "@('Application Hang')"
+    else:
+        providers = "@('Application Error', 'Application Hang')"
+
     ps_cmd = f"""
     $ErrorActionPreference = 'SilentlyContinue'
     $startTime = (Get-Date).AddHours(-{hours})
-    $events = Get-WinEvent -FilterHashtable @{{LogName='Application'; ProviderName='Application Error'; StartTime=$startTime}} -MaxEvents {max_events}
+    $events = Get-WinEvent -FilterHashtable @{{LogName='Application'; ProviderName={providers}; StartTime=$startTime}} -MaxEvents {max_events}
     if ($events) {{
         foreach ($e in $events) {{
             Write-Output "---EVENT_XML_START---"
@@ -100,22 +119,21 @@ def _fetch_via_powershell(hours: int, max_events: int) -> List[CrashEvent]:
 def get_crash_events(
     hours: int = 24,
     max_events: int = 50,
+    event_type: Literal["ALL", "CRASH", "HANG"] = "ALL",
     app_name: Optional[str] = None,
 ) -> List[CrashEvent]:
     """
-    Retrieves application crash events (Event ID 1000) from the Windows Event Log.
-    Automatically prioritizes pywin32 if available, with seamless fallback to PowerShell.
+    Retrieves application crash (Event 1000/1001) and hang (Event 1002) events.
+    Automatically prioritizes pywin32 if available, with fallback to PowerShell.
     """
     events: List[CrashEvent] = []
 
     if HAS_PYWIN32:
-        events = _fetch_via_pywin32(hours, max_events)
+        events = _fetch_via_pywin32(hours, max_events, event_type)
 
-    # Fallback if pywin32 is not installed or returned empty
     if not events:
-        events = _fetch_via_powershell(hours, max_events)
+        events = _fetch_via_powershell(hours, max_events, event_type)
 
-    # If an application filter was requested
     if app_name:
         query_norm = app_name.lower().strip()
         events = [e for e in events if query_norm in e.app_name.lower()]

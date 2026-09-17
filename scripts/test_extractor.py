@@ -1,4 +1,4 @@
-"""CLI Test script for WinEvent AI Analyzer (Phase 1 OS Extraction)."""
+"""CLI Test script for WinEvent Analyzer (Phase 1 OS Extraction)."""
 
 import sys
 import os
@@ -18,58 +18,59 @@ if sys.platform == "win32":
 from backend.extractor.event_reader import get_crash_events, HAS_PYWIN32
 
 
-def run_test(hours: int = 48, limit: int = 10, app: str = None):
-    print("=" * 80)
-    print("  WinEvent AI Analyzer - Phase 1 OS Extraction Test")
-    print("=" * 80)
+def run_test(hours: int = 48, limit: int = 10, event_type: str = "ALL", app: str = None):
+    print("=" * 86)
+    print("  WinEvent Analyzer - Phase 1 OS Extraction Test (Crash & Hang)")
+    print("=" * 86)
     print(f"[*] Engine Mode : {'pywin32 (Native C-API)' if HAS_PYWIN32 else 'PowerShell Fallback'}")
     print(f"[*] Time Window : Last {hours} hours")
+    print(f"[*] Event Filter: {event_type} (ID 1000/1001/1002)")
     print(f"[*] Max Limit   : {limit} events")
     if app:
         print(f"[*] Filter App  : {app}")
-    print("[*] Querying Windows Event Log (Channel: Application, EventID: 1000)...")
-    print("-" * 80)
+    print("[*] Querying Windows Event Log (Channel: Application)...")
+    print("-" * 86)
 
-    events = get_crash_events(hours=hours, max_events=limit, app_name=app)
+    events = get_crash_events(hours=hours, max_events=limit, event_type=event_type, app_name=app)
 
     if not events:
-        print("[!] No crash events found within the specified time window.")
-        print("    Tip: Try increasing --hours (e.g. --hours 168 for 7 days)")
-        print("    Or run: python scripts/crash_simulator.py --type access_violation")
-        print("=" * 80)
+        print("[!] No events found within the specified time window.")
+        print("    Tip: Try increasing --hours (e.g. --hours 720 for 30 days)")
+        print("    Or simulate with: python scripts/crash_simulator.py --type fatal_exit")
+        print("=" * 86)
         return
 
-    print(f"[+] Successfully extracted {len(events)} crash event(s)!\n")
+    print(f"[+] Successfully extracted {len(events)} event(s)!\n")
 
-    # Display Table
-    header = f"{'#':<3} | {'Timestamp':<20} | {'Application':<20} | {'Module':<18} | {'Code':<12} | {'Symbol'}"
+    # Display Table with Type Column
+    header = f"{'#':<3} | {'Type':<5} | {'Timestamp':<19} | {'Application':<20} | {'Code/Detail':<14} | {'Symbol'}"
     print(header)
     print("-" * len(header))
 
     for idx, e in enumerate(events, 1):
-        # Format time
         time_str = e.time_created[:19].replace("T", " ") if e.time_created else "N/A"
         app_disp = (e.app_name[:18] + "..") if len(e.app_name) > 20 else e.app_name
-        mod_disp = (e.module_name[:16] + "..") if len(e.module_name) > 18 else e.module_name
+        detail_disp = e.exception_code if e.event_type == "CRASH" else (e.hang_type or "HANG")[:13]
         symbol_disp = e.exception_symbol or "UNKNOWN"
-        print(f"{idx:<3} | {time_str:<20} | {app_disp:<20} | {mod_disp:<18} | {e.exception_code:<12} | {symbol_disp}")
+        print(f"{idx:<3} | {e.event_type:<5} | {time_str:<19} | {app_disp:<20} | {detail_disp:<14} | {symbol_disp}")
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 86)
     print("  Detailed View of the Latest Event (Normalized Data Model):")
-    print("=" * 80)
+    print("=" * 86)
     latest = events[0]
     print(json.dumps(latest.model_dump(), indent=2, ensure_ascii=False))
 
-    print("\n" + "-" * 80)
-    print(f"[*] Human Explanation: {latest.exception_meaning}")
-    print(f"[*] Signature Hash    : {latest.signature_hash}")
-    print("=" * 80)
+    print("\n" + "-" * 86)
+    print(f"[*] Explanation: {latest.exception_meaning}")
+    print(f"[*] Signature  : {latest.signature_hash}")
+    print("=" * 86)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Phase 1 OS Log Extractor")
     parser.add_argument("--hours", type=int, default=48, help="Hours lookback (default: 48)")
     parser.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
+    parser.add_argument("--type", choices=["ALL", "CRASH", "HANG"], default="ALL", help="Event type filter")
     parser.add_argument("--app", type=str, default=None, help="Filter by application name")
     args = parser.parse_args()
-    run_test(hours=args.hours, limit=args.limit, app=args.app)
+    run_test(hours=args.hours, limit=args.limit, event_type=args.type, app=args.app)

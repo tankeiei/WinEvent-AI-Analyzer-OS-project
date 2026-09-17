@@ -1,7 +1,7 @@
-"""Safe Crash Simulator for WinEvent AI Analyzer.
+"""Safe Crash and Hang Simulator for WinEvent Analyzer.
 
-This tool safely simulates specific Windows application crashes in an isolated
-child process to test Windows Event Log extraction without impacting the system.
+This tool safely simulates specific Windows application crashes (Event ID 1000)
+and application freezes/hangs (Event ID 1002) in an isolated child process.
 """
 
 import sys
@@ -18,66 +18,82 @@ if sys.platform == "win32":
 
 SIMULATION_PAYLOADS = {
     "fatal_exit": {
+        "event_id": 1000,
+        "type": "CRASH",
         "code": "0x40000015",
         "symbol": "STATUS_FATAL_APP_EXIT",
         "description": "Calling C-runtime abort() inside Python to trigger emergency app termination",
         "cmd": [sys.executable, "-c", "import ctypes; ctypes.cdll.msvcrt.abort()"]
     },
     "fail_fast": {
+        "event_id": 1000,
+        "type": "CRASH",
         "code": "0x80131623",
         "symbol": "COR_E_FAILFAST",
         "description": "Calling .NET Environment.FailFast() in an isolated PowerShell process",
         "cmd": ["powershell", "-NoProfile", "-Command", "[System.Environment]::FailFast('Crash simulation test')"]
     },
     "breakpoint": {
+        "event_id": 1000,
+        "type": "CRASH",
         "code": "0x80000003",
         "symbol": "STATUS_BREAKPOINT",
         "description": "Triggering debugger breakpoint in an isolated PowerShell child process",
         "cmd": ["powershell", "-NoProfile", "-Command", "[System.Diagnostics.Debugger]::Break()"]
+    },
+    "gui_freeze": {
+        "event_id": 1002,
+        "type": "HANG",
+        "code": "N/A",
+        "symbol": "APPLICATION_HANG",
+        "description": "Creating a GUI Window that freezes its Message Loop to demonstrate Windows Hang detection",
+        "cmd": [
+            sys.executable, "-c",
+            "import tkinter as tk, time; root = tk.Tk(); root.title('Simulated Freezing App'); root.update(); time.sleep(10)"
+        ]
     }
 }
 
 
-def simulate_crash(crash_type: str):
-    if crash_type not in SIMULATION_PAYLOADS:
-        print(f"[!] Invalid crash type: '{crash_type}'")
+def simulate_event(event_name: str):
+    if event_name not in SIMULATION_PAYLOADS:
+        print(f"[!] Invalid simulation type: '{event_name}'")
         print(f"    Available types: {', '.join(SIMULATION_PAYLOADS.keys())}")
         sys.exit(1)
 
-    payload = SIMULATION_PAYLOADS[crash_type]
-    print("=" * 65)
-    print("  WinEvent AI Analyzer - Safe Crash Simulator")
-    print("=" * 65)
-    print(f"[*] Target Type  : {crash_type}")
-    print(f"[*] Expected Code: {payload['code']} ({payload['symbol']})")
+    payload = SIMULATION_PAYLOADS[event_name]
+    print("=" * 68)
+    print(f"  WinEvent Analyzer - Safe {payload['type']} Simulator (Event {payload['event_id']})")
+    print("=" * 68)
+    print(f"[*] Target Name  : {event_name}")
+    print(f"[*] Event Type   : {payload['type']} (Event ID {payload['event_id']})")
+    print(f"[*] Code/Symbol  : {payload['code']} ({payload['symbol']})")
     print(f"[*] Description  : {payload['description']}")
     print("[*] Spawning isolated child process...")
 
-    # Run the crash snippet in a separate isolated child process
     process = subprocess.Popen(payload["cmd"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
-    # Wait for child process termination
     process.communicate()
     exit_code = process.returncode
-    hex_exit = hex(exit_code & 0xFFFFFFFF)
+    hex_exit = hex(exit_code & 0xFFFFFFFF) if exit_code is not None else "0"
 
-    print(f"[+] Child process terminated with exit code: {exit_code} ({hex_exit})")
-    print("[*] Waiting 3 seconds for Windows Error Reporting (WER) to write Event ID 1000...")
+    print(f"[+] Child process finished with exit code: {exit_code} ({hex_exit})")
+    print("[*] Waiting 3 seconds for Windows to update Event Viewer...")
     time.sleep(3)
     print("[+] Done! You can now run 'python scripts/test_extractor.py' to inspect the event.")
-    print("=" * 65)
+    print("=" * 68)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Safely simulate application crashes for testing.")
+    parser = argparse.ArgumentParser(description="Safely simulate application crashes and hangs for testing.")
     parser.add_argument(
         "--type",
         choices=list(SIMULATION_PAYLOADS.keys()),
         default="fatal_exit",
-        help="Type of crash to simulate (default: fatal_exit)"
+        help="Type of event to simulate (default: fatal_exit)"
     )
     args = parser.parse_args()
-    simulate_crash(args.type)
+    simulate_event(args.type)
 
 
 if __name__ == "__main__":

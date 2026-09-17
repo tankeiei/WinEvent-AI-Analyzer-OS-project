@@ -1,39 +1,53 @@
-# WinEvent AI Analyzer
+# WinEvent Analyzer
+### Windows Application Crash & Hang Monitoring System with AI-assisted Diagnosis
 
-> **ระบบวิเคราะห์และแก้ไขปัญหาแอปพลิเคชันแครชด้วย Windows Event Log และ AI**  
-> *A modern Windows Application Crash Diagnosis and Troubleshooting assistant powered by Generative AI.*
-
----
-
-## 📌 บทนำ (Overview)
-
-เมื่อเกิดเหตุการณ์แอปพลิเคชันขัดข้อง (Crash), ค้าง (Freeze) หรือปิดตัวกะทันหันบน Windows ข้อมูลทางเทคนิคจะถูกบันทึกลงใน **Windows Event Log** อัตโนมัติ (Event ID 1000 และ 1001) ซึ่งมักเต็มไปด้วยรหัสทางเทคนิคระดับลึก (เช่น Exception Code `0xc0000005`, Faulting Module `ntdll.dll`) ทำให้เข้าใจและแก้ไขได้ยาก
-
-**WinEvent AI Analyzer** ทำหน้าที่เป็นสะพานเชื่อมระหว่างระบบปฏิบัติการและผู้ใช้งาน โดยดึงข้อมูล Telemetry ทางเทคนิคมาแปลเป็นภาษาที่เข้าใจง่าย (Tech-to-Human Translation) พร้อมวิเคราะห์สาเหตุและเสนอแนวทางแก้ไขเป็นขั้นตอนผ่าน Google Gemini AI
+> **ระบบตรวจจับและวิเคราะห์ Application Crash/Hang จาก Windows Event Log พร้อมระบบ AI ช่วยวินิจฉัย**  
+> *An OS-centric telemetry monitoring tool capturing Event IDs 1000, 1001, and 1002 from Windows Event Subsystem, providing human-friendly tech-to-human translation and suggested diagnostics.*
 
 ---
 
-## 🏛️ สถาปัตยกรรมระบบ (Architecture)
+## 📌 บทนำและจุดเน้นด้านระบบปฏิบัติการ (OS-Centric Overview)
 
-1. **OS & Telemetry Layer**
-   - ดึงข้อมูลจาก Windows Event Log (Channel: `Application`)
-   - กรอง Event ID `1000` (Application Error) และ `1001` (Windows Error Reporting)
-   - สกัด App Name, Module, Exception Code, Memory Offset, Timestamp
-   - ใช้ `pywin32` Native API พร้อมกลไก PowerShell Fallback
+เมื่อเกิดเหตุการณ์แอปพลิเคชันขัดข้อง (Crash) หรือค้างไม่ตอบสนอง (Freeze/Hang) ระบบปฏิบัติการ Windows จะบันทึกหลักฐานทางเทคนิคระดับลึกไว้ใน **Windows Event Log** (Channel: `Application`):
+- **Event ID 1000 (Application Error)**: เกิดจาก Unhandled Hardware/Software Exceptions (เช่น Access Violation `0xc0000005`, Breakpoint `0x80000003`)
+- **Event ID 1001 (Windows Error Reporting)**: ข้อมูล Telemetry และ Bucket ID
+- **Event ID 1002 (Application Hang)**: เกิดจาก UI Thread ของหน้าต่างโปรแกรมหยุดประมวลผล Windows Message Loop เกิน 5 วินาที
 
-2. **Core Engine & Intelligence**
-   - Pydantic Telemetry Normalizer
-   - Offline Fallback Dictionary (พจนานุกรมรหัส Win32 / NTSTATUS)
-   - Google Gemini AI Engine สำหรับการวินิจฉัยเชิงลึก
-   - Local SQLite Cache จัดเก็บผลวิเคราะห์ซ้ำตาม Signature เพื่อประหยัด API Token
-
-3. **User Interface & Dashboard**
-   - FastAPI Backend Server
-   - Premium Modern Dark Dashboard (HTML5, Vanilla CSS3, JavaScript)
-   - ไทม์ไลน์ประวัติ Crash, ตัวกรองช่วงเวลา, Checklist วิธีแก้ปัญหา, แหล่งค้นคว้าอ้างอิง
+**WinEvent Analyzer** มุ่งเน้นการดึงหลักฐานของระบบปฏิบัติการ (OS Telemetry) มาจัดโครงสร้าง วิเคราะห์รหัสข้อยกเว้น และใช้ Generative AI ทำหน้าที่เป็น **ผู้ช่วยสรุป (AI-Assisted)** แปลข้อมูลเทคนิคให้อยู่ในรูปแบบ **"Possible Causes / Suggested Diagnosis"** พร้อมแนวทางการตรวจสอบที่ผู้ใช้สามารถปฏิบัติตามได้จริง
 
 ---
 
-## 🚀 เอกสารเพิ่มเติม
+## 🏛️ สถาปัตยกรรมระบบ (Pipeline Flow)
 
-- ศึกษาแผนการพัฒนาและรายละเอียดเชิงลึกทั้งหมดได้ที่ [plan.md](plan.md)
+$$\text{Safe Simulator} \longrightarrow \text{Windows Event Log} \longrightarrow \text{Dual Extractor} \longrightarrow \text{Parser} \longrightarrow \text{Error Mapping} \longrightarrow \text{AI Diagnosis} \longrightarrow \text{Dashboard}$$
+
+1. **Test & Simulation**: จำลอง Crash (SEH Exceptions) และ Hang (Message Loop Freeze) อย่างปลอดภัยใน Isolated Process
+2. **OS Extraction**: ดึง Event ID 1000, 1001, 1002 ด้วย `pywin32` C-API และ `PowerShell Get-WinEvent` Fallback
+3. **Data Normalization**: แปลงโครงสร้าง XML ให้เป็น Pydantic Model (`CRASH` และ `HANG`)
+4. **Offline Diagnostics**: พจนานุกรมแปลรหัส NTSTATUS, Win32 Codes, และ Hang Types ออฟไลน์
+5. **AI-Assisted Engine**: สรุปอาการแบบ Tech-to-Human และเสนอ Possible Causes (Gemini AI)
+6. **Local Dashboard**: หน้าจอแดชบอร์ดตรวจสอบประวัติและดูคำแนะนำ
+
+---
+
+## 🧪 การทดสอบรัน Phase 1 (คำสั่ง CLI)
+
+```powershell
+# ดูประวัติ Crash และ Hang ล่าสุด
+python scripts/test_extractor.py --hours 48 --limit 5
+
+# กรองดูเฉพาะกรณีโปรแกรมค้าง (Application Hang - Event 1002)
+python scripts/test_extractor.py --type HANG --hours 720
+
+# กรองดูเฉพาะโปรแกรมแครช (Application Crash - Event 1000)
+python scripts/test_extractor.py --type CRASH --hours 48
+
+# ทดสอบจำลอง Crash ปลอดภัย (ไม่กระทบเครื่อง)
+python scripts/crash_simulator.py --type fatal_exit
+```
+
+---
+
+## 📚 เอกสารเพิ่มเติม
+- รายละเอียดแผนการพัฒนา: [plan.md](plan.md)
+- คู่มืออธิบายโค้ดและสถาปัตยกรรม: [docs/CODE_EXPLANATION.md](docs/CODE_EXPLANATION.md)

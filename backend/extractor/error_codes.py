@@ -1,8 +1,8 @@
-"""Offline dictionary of Windows NTSTATUS and Win32 exception codes."""
+"""Offline dictionary of Windows NTSTATUS, Win32 exception codes, and Hang diagnostics."""
 
 from typing import Dict, Tuple
 
-# Maps normalized hex code (lowercase, with 0x) to (Symbol, Thai Explanation)
+# Maps normalized hex code (lowercase, with 0x) or special identifiers to (Symbol, Thai Explanation)
 EXCEPTION_DATABASE: Dict[str, Tuple[str, str]] = {
     "0xc0000005": (
         "STATUS_ACCESS_VIOLATION",
@@ -64,13 +64,17 @@ EXCEPTION_DATABASE: Dict[str, Tuple[str, str]] = {
         "STATUS_FATAL_APP_EXIT",
         "โปรแกรมสั่งจบการทำงานฉุกเฉินผ่านการเรียก abort() หรือ FatalAppExit() เนื่องจากตรวจพบบั๊กหรือเงื่อนไขข้อผิดพลาดร้ายแรงที่ไม่สามารถกู้คืนได้"
     ),
+    "APPLICATION_HANG": (
+        "APPLICATION_HANG",
+        "แอปพลิเคชันหยุดตอบสนอง (UI Message Loop Freeze) หน้าต่างโปรแกรมไม่ตอบสนองต่อระบบ Windows เกินเวลาที่กำหนด (ปกติ 5 วินาที) มักเกิดจาก Deadlock, งานคำนวณหนักใน UI Thread, หรือรอ Network/Disk I/O โดยไม่มี Timeout"
+    ),
 }
 
 
 def normalize_code(raw_code: str) -> str:
     """Normalizes an exception code string to standard 8-char hex format (e.g. '0xc0000005')."""
-    if not raw_code:
-        return "0x00000000"
+    if not raw_code or raw_code.upper() in ("N/A", "NONE", "UNKNOWN"):
+        return "N/A"
     
     code = raw_code.strip().lower()
     if code.startswith("0x"):
@@ -83,14 +87,17 @@ def normalize_code(raw_code: str) -> str:
 
 def lookup_exception(code: str) -> Tuple[str, str]:
     """
-    Looks up an exception code in the offline database.
-    Returns (Symbol, Meaning). If unknown, returns ('UNKNOWN_EXCEPTION', generic text).
+    Looks up an exception code or identifier in the offline database.
+    Returns (Symbol, Meaning).
     """
+    if code == "APPLICATION_HANG":
+        return EXCEPTION_DATABASE["APPLICATION_HANG"]
+
     norm = normalize_code(code)
     if norm in EXCEPTION_DATABASE:
         return EXCEPTION_DATABASE[norm]
     
     return (
         "UNKNOWN_EXCEPTION",
-        f"รหัสข้อผิดพลาดเฉพาะ ({norm}) ที่ไม่ได้อยู่ในฐานข้อมูลพจนานุกรมออฟไลน์ ต้องให้ AI วินิจฉัยเพิ่มเติม"
+        f"รหัสข้อผิดพลาดเฉพาะ ({norm}) ที่ไม่ได้อยู่ในฐานข้อมูลพจนานุกรมออฟไลน์ แนะนำให้ใช้ AI ช่วยวิเคราะห์เพิ่มเติม"
     )
