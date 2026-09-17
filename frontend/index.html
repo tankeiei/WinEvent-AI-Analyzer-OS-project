@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WinEvent Analyzer | Windows Crash & Hang Telemetry Monitor</title>
+  <meta name="description" content="Windows Application Crash & Hang Monitoring and Diagnosis System with AI-assisted Telemetry Analysis">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%3E<text y=%2226%22 font-size=%2226%22>🛡️</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-area">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1 class="brand-title">WinEvent Analyzer</h1>
+          <p class="brand-subtitle">Windows Application Crash & Hang Telemetry Monitoring System</p>
+        </div>
+      </div>
+
+      <div class="system-status-pills">
+        <div class="status-pill">
+          <span class="status-indicator"></span>
+          <span>Host: <strong id="sys-host">Detecting...</strong></span>
+        </div>
+        <div class="status-pill">
+          <span>Engine: <strong id="sys-engine" style="color: var(--accent-cyan)">PowerShell</strong></span>
+        </div>
+        <div class="status-pill">
+          <span>Channel: <strong style="color: #e2e8f0;">Application</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Interactive Simulation Bar (Live Demo Feature) -->
+    <section class="simulation-bar" aria-label="Interactive Simulator">
+      <div class="sim-info">
+        <span class="sim-badge">⚡ Live Demo</span>
+        <span class="sim-text">จำลองเหตุการณ์ใน Isolated Child Process เพื่อทดสอบการตรวจจับสด:</span>
+      </div>
+
+      <div class="sim-buttons">
+        <button type="button" class="btn-sim btn-sim-failfast" data-sim="fail_fast" id="btn-sim-failfast">
+          <span>💥</span> .NET FailFast (0x80131623)
+        </button>
+        <button type="button" class="btn-sim btn-sim-abort" data-sim="fatal_exit" id="btn-sim-abort">
+          <span>⚠️</span> C-Runtime abort (0x40000015)
+        </button>
+        <button type="button" class="btn-sim btn-sim-break" data-sim="breakpoint" id="btn-sim-break">
+          <span>🛑</span> DebugBreak (0x80000003)
+        </button>
+        <button type="button" class="btn-sim btn-sim-hang" data-sim="gui_freeze" id="btn-sim-hang">
+          <span>⏳</span> GUI Hang (Event 1002)
+        </button>
+      </div>
+    </section>
+
+    <!-- Toolbar & Filters -->
+    <nav class="control-toolbar" aria-label="Filters and Search">
+      <div class="filter-group">
+        <button type="button" class="tab-btn active" data-type="ALL" id="tab-all">All Events</button>
+        <button type="button" class="tab-btn" data-type="CRASH" id="tab-crash">Crash (ID 1000)</button>
+        <button type="button" class="tab-btn" data-type="HANG" id="tab-hang">Hang (ID 1002)</button>
+      </div>
+
+      <div class="filter-group" style="flex: 1; justify-content: flex-end;">
+        <div class="search-box">
+          <span>🔍</span>
+          <input type="text" id="search-input" placeholder="Filter by App, DLL, or Code..." autocomplete="off">
+        </div>
+
+        <select id="time-filter" class="select-control" aria-label="Time Lookback Filter">
+          <option value="24">Last 24 Hours</option>
+          <option value="48" selected>Last 48 Hours</option>
+          <option value="168">Last 7 Days (168h)</option>
+          <option value="720">Last 30 Days (720h)</option>
+        </select>
+
+        <button type="button" class="btn-refresh" id="btn-refresh">
+          <span>🔄</span> Scan Now
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Dashboard Grid (2 Columns) -->
+    <main class="main-dashboard">
+      <!-- Left Panel: Event Timeline List -->
+      <section class="timeline-panel" aria-label="Events Timeline">
+        <div class="timeline-header">
+          <span>DETECTED TELEMETRY LOGS</span>
+          <span id="event-count" style="color: var(--accent-cyan); font-family: var(--font-mono);">0 events</span>
+        </div>
+        <div id="timeline-list">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Right Panel: Detailed OS Telemetry Inspection -->
+      <section class="detail-panel" id="detail-container" aria-label="Detailed OS Telemetry">
+        <!-- Populated dynamically by app.js -->
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
