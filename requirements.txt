@@ -1,0 +1,17 @@
+# WinEvent AI Analyzer Dependencies
+
+# Web & API Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+
+# Data Validation & Modeling
+pydantic>=2.6.0
+
+# Environment Management
+python-dotenv>=1.0.0
+
+# AI & LLM Engine
+google-generativeai>=0.4.0
+
+# Optional Native Windows Event Log (fallback to PowerShell if not installed)
+pywin32>=306; sys_platform == 'win32'
