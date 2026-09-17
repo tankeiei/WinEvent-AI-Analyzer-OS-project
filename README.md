@@ -30,6 +30,29 @@ $$\text{Safe Simulator} \longrightarrow \text{Windows Event Log} \longrightarrow
 
 ---
 
+## 🚀 วิธีเปิดใช้งาน Web Dashboard (Quick Start)
+
+### วิธีที่ 1: ดับเบิ้ลคลิกเดียว (แนะนำสำหรับ Windows)
+ดับเบิ้ลคลิกที่ไฟล์ **`run.bat`** (หรือพิมพ์คำสั่งใน Terminal):
+```powershell
+.\run.bat
+```
+> ระบบจะเริ่มเซิร์ฟเวอร์ FastAPI และเปิดเบราว์เซอร์ไปยัง `http://127.0.0.1:8000` ให้อัตโนมัติทันที
+
+---
+
+### วิธีที่ 2: สตาร์ทผ่านคำสั่ง Python / Uvicorn
+```powershell
+# ติดตั้งไลบรารีที่จำเป็น (รันครั้งแรก)
+pip install -r requirements.txt
+
+# สตาร์ทเซิร์ฟเวอร์
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
+```
+จากนั้นเปิดเว็บเบราว์เซอร์ไปที่: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
+
+---
+
 ## 🧪 การทดสอบรัน Phase 1 (คำสั่ง CLI)
 
 ```powershell
