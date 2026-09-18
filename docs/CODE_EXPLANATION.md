@@ -1,5 +1,5 @@
 # คู่มืออธิบายสถาปัตยกรรมและการทำงานของโค้ดสกัดข้อมูล Crash & Hang Log
-## (WinEvent Analyzer - Phase 1: OS Extraction & Hang Detection Deep Dive)
+## (WinEvent Analyzer - OS Extraction, Diagnosis & Mission Control)
 
 เอกสารฉบับนี้จัดทำขึ้นเพื่ออธิบายรายละเอียดการทำงานของระบบดึงข้อมูล Application Crash (Event ID 1000) และ Application Hang (Event ID 1002) จากระบบปฏิบัติการ Windows โครงสร้างข้อมูลที่สกัดได้ และการทำงานของแต่ละโมดูลในระดับโค้ดอย่างละเอียด
 
@@ -37,7 +37,7 @@
 +-------------------------------------------------------------------------------+
 |                            1. TEST & SIMULATION LAYER                         |
 |  [scripts/crash_simulator.py]                                                 |
-|  - ทดสอบจำลอง Exception (0xc0000005, 0x80131623, 0x40000015, DebugBreak)     |
+|  - ทดสอบจำลอง Exception (0xc0000005, 0xc0000409, 0x80131623, DebugBreak)     |
 |  - ทดสอบจำลอง Message Loop Freeze (Event 1002 Hang) ใน Isolated Process       |
 +---------------------------------------+---------------------------------------+
                                         |  (Trigger System Telemetry)
@@ -103,8 +103,9 @@
   > *"แอปพลิเคชันหยุดตอบสนอง (UI Message Loop Freeze) หน้าต่างโปรแกรมไม่ตอบสนองต่อระบบ Windows เกินเวลาที่กำหนด (ปกติ 5 วินาที) มักเกิดจาก Deadlock, งานคำนวณหนักใน UI Thread หรือรอ Network/Disk I/O โดยไม่มี Timeout"*
 
 ### 3.4 `scripts/crash_simulator.py`
-- รองรับการจำลอง 4 โหมด:
-  1. `fatal_exit`: สั่ง C `abort()` (Event 1000, รหัส `0x40000015`)
-  2. `fail_fast`: สั่ง .NET `FailFast()` (Event 1000, รหัส `0x80131623`)
-  3. `breakpoint`: สั่ง `Debugger.Break()` (Event 1000, รหัส `0x80000003`)
-  4. `gui_freeze`: จำลองเปิดหน้าต่าง GUI ที่หยุดตอบสนอง (จำลองพฤติกรรม Event 1002)
+- รองรับการจำลอง 5 โหมดใน process แยก:
+  1. `fatal_exit`: สั่ง C `abort()` (Event 1000, รหัส `0xc0000409`)
+  2. `access_violation`: สั่ง native access violation (Event 1000, รหัส `0xc0000005`)
+  3. `fail_fast`: สั่ง .NET `FailFast()` (Event 1000, รหัส `0x80131623`)
+  4. `breakpoint`: สั่ง `Debugger.Break()` (Event 1000, รหัส `0x80000003`)
+  5. `gui_freeze`: จำลองเปิดหน้าต่าง GUI ที่หยุดตอบสนอง (พฤติกรรม Event 1002)

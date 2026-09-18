@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -29,6 +29,8 @@ venv/
 env/
 ENV/
 .venv/
+frontend/node_modules/
+frontend/dist/
 
 # Environment Variables & Secrets
 .env
@@ -42,6 +44,7 @@ ENV/
 # Logs
 *.log
 logs/
+.pytest-tmp/
 
 # IDE & Editor files
 .vscode/

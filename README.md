@@ -26,18 +26,39 @@ $$\text{Safe Simulator} \longrightarrow \text{Windows Event Log} \longrightarrow
 3. **Data Normalization**: แปลงโครงสร้าง XML ให้เป็น Pydantic Model (`CRASH` และ `HANG`)
 4. **Offline Diagnostics**: พจนานุกรมแปลรหัส NTSTATUS, Win32 Codes, และ Hang Types ออฟไลน์
 5. **AI-Assisted Engine**: สรุปอาการแบบ Tech-to-Human และเสนอ Possible Causes (Gemini AI)
-6. **Local Dashboard**: หน้าจอแดชบอร์ดตรวจสอบประวัติและดูคำแนะนำ
+6. **SQLite Cache**: เก็บผล Gemini ตาม crash signature, model และ prompt version
+7. **Local Dashboard**: SRE Mission Control สำหรับตรวจสอบประวัติและดูคำแนะนำ
 
 ---
 
 ## 🚀 วิธีเปิดใช้งาน Web Dashboard (Quick Start)
 
 ### วิธีที่ 1: ดับเบิ้ลคลิกเดียว (แนะนำสำหรับ Windows)
+ติดตั้ง frontend dependencies และ build ครั้งแรกก่อน:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
 ดับเบิ้ลคลิกที่ไฟล์ **`run.bat`** (หรือพิมพ์คำสั่งใน Terminal):
 ```powershell
 .\run.bat
 ```
 > ระบบจะเริ่มเซิร์ฟเวอร์ FastAPI และเปิดเบราว์เซอร์ไปยัง `http://127.0.0.1:8000` ให้อัตโนมัติทันที
+
+หลังแก้ React frontend ให้รัน `npm run build` ใหม่ก่อนเปิด `run.bat` ระบบจะไม่ติดตั้ง npm dependencies ให้อัตโนมัติ
+
+ระบบทำงานแบบ Offline ได้ทันที หากต้องการเปิด Gemini ให้คัดลอก `.env.example` เป็น `.env` แล้วใส่ค่า:
+
+```text
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+API key จะถูกใช้เฉพาะ backend และไม่ถูกส่งไป frontend โดยระบบจะส่งเฉพาะ telemetry ที่จำเป็นต่อการวิเคราะห์เท่านั้น
 
 ---
 
@@ -50,6 +71,23 @@ pip install -r requirements.txt
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 จากนั้นเปิดเว็บเบราว์เซอร์ไปที่: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
+
+สำหรับพัฒนา frontend แบบ live reload ให้เปิดอีก terminal:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Vite จะเปิดที่ `http://127.0.0.1:5173` และ proxy `/api` ไปยัง FastAPI ที่ port 8000
+
+### API หลัก
+
+- `GET /api/system-info` ตรวจสอบความพร้อมของเครื่อง, AI และ Cache
+- `GET /api/dashboard` ดึง Event Log พร้อม KPI และ engine ที่ใช้จริงใน request เดียว
+- `POST /api/analyze` วิเคราะห์ event ด้วย Cache, Gemini หรือ Offline fallback
+- `POST /api/simulate` จำลอง crash/hang ใน process แยกที่ allowlist ไว้
 
 ---
 
@@ -67,6 +105,15 @@ python scripts/test_extractor.py --type CRASH --hours 48
 
 # ทดสอบจำลอง Crash ปลอดภัย (ไม่กระทบเครื่อง)
 python scripts/crash_simulator.py --type fatal_exit
+# จำลอง Access Violation (0xc0000005) ใน process แยก
+python scripts/crash_simulator.py --type access_violation
+
+# รัน automated tests
+pytest -q --basetemp .pytest-tmp
+
+# รัน frontend component tests
+cd frontend
+npm test -- --run
 ```
 
 ---

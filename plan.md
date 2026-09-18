@@ -25,7 +25,7 @@
 +-------------------------------------------------------------------------------+
 |                            1. TEST & SIMULATION LAYER                         |
 |  [scripts/crash_simulator.py]                                                 |
-|  - ทดสอบจำลอง Exception (0xc0000005, 0x80131623, 0x40000015, DebugBreak)     |
+|  - ทดสอบจำลอง Exception (0xc0000005, 0xc0000409, 0x80131623, DebugBreak)     |
 |  - ทดสอบจำลอง Window Message Loop Freeze (Event 1002 Hang) ใน Isolated Process |
 +---------------------------------------+---------------------------------------+
                                         |  (Trigger System Telemetry)
@@ -80,9 +80,9 @@
 | :--- | :--- | :--- |
 | **Phase 1: OS Extraction & Test Harness** *(เสร็จสมบูรณ์ 100%)* | พัฒนาระบบดึง Event ID 1000, 1001, 1002 จาก Windows Event Log ด้วย Dual-Engine พร้อม Safe Simulator | ดึงประวัติ Crash และ Hang จริงในเครื่องออกมาเป็น JSON ได้สมบูรณ์ |
 | **Phase 2: Error Mapping & Diagnostic Normalization** *(เสร็จสมบูรณ์ 100%)* | จัดหมวดหมู่รหัส Win32/NTSTATUS เป็น 6 กลุ่มระบบ ระบุระดับ Severity พร้อม Actionable Checklist ออฟไลน์ และเตรียม Prompt Schema สำหรับ AI | ระบบเข้าใจรหัสทุกกลุ่ม มีเช็กลิสต์แนะนำเบื้องต้น และพร้อมส่งต่อข้อมูลให้ AI ใน Phase 3 |
-| **Phase 3: AI-Assisted Diagnosis Engine** | เชื่อมต่อ Gemini API วิเคราะห์อาการแบบ Suggested Diagnosis พร้อมทำ SQLite Cache | ได้รับผลวิเคราะห์ภาษาคนและเช็กลิสต์แนวทางแก้ไขปัญหา |
-| **Phase 4: Backend API & Modern Dashboard** | สร้าง FastAPI endpoints และพัฒนาหน้าเว็บ Dashboard สวยงามใช้งานง่าย | ผู้ใช้เปิดหน้าเว็บ กดสแกน และดูผลการวิเคราะห์แบ่งฝั่งได้ทันที |
-| **Phase 5: Verification & Report** | ทดสอบ End-to-End เดโมการรันจริง และจัดทำรูปเล่มรายงานวิชา OS | โปรเจกต์พร้อมนำเสนอและส่งอาจารย์ |
+| **Phase 3: AI-Assisted Diagnosis Engine** *(เสร็จสมบูรณ์ 100%)* | เชื่อมต่อ Gemini API แบบ Structured Output, Offline fallback และ SQLite Cache ตาม signature/model/prompt version | ได้ผลวิเคราะห์ภาษาคน, Possible Causes และ checklist แม้ไม่มี API key |
+| **Phase 4: Backend API & SRE Mission Control** *(เสร็จสมบูรณ์ 100%)* | เพิ่ม `/api/dashboard` และ `/api/analyze`, รายงาน engine จริง และ redesign Dashboard แบบ responsive | ผู้ใช้สแกน, เลือก incident, วิเคราะห์, ดู cache/offline state และ telemetry ได้ในหน้าเดียว |
+| **Phase 5: Verification & Local App QA** *(เสร็จสมบูรณ์ 100%)* | เพิ่ม automated tests, API smoke tests, Native pywin32 verification และ runtime script | Local Web App พร้อมรันบน Windows ผ่าน `run.bat` |
 
 ---
 
