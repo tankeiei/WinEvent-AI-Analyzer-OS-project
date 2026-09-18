@@ -1,204 +1,345 @@
-"""FastAPI Backend Server for WinEvent Analyzer."""
+"""Local FastAPI server for the WinEvent Analyzer dashboard."""
 
-import os
-import sys
-import platform
 import asyncio
-import subprocess
 from collections import Counter
-from typing import Optional, Literal
+from datetime import datetime, timezone
+import platform
 from pathlib import Path
+import subprocess
+import sys
+from threading import Lock
+from typing import Literal, Optional
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.extractor.event_reader import get_crash_events, HAS_PYWIN32
-from backend.models import CrashEvent
+from backend.ai_engine.gemini_analyzer import DiagnosisService
+from backend.config import get_settings
+from backend.database import DiagnosisCache
+from backend.extractor.event_reader import HAS_PYWIN32, read_event_log
+from backend.extractor.error_codes import lookup_diagnostic
+from backend.models import (
+    AnalyzeRequest,
+    CrashEvent,
+    DashboardResponse,
+    DashboardStats,
+    DiagnosisResponse,
+    EventFilterType,
+)
+
+
+settings = get_settings()
+diagnosis_service = DiagnosisService(settings=settings)
+cache = DiagnosisCache(settings.cache_db_path)
 
 app = FastAPI(
     title="WinEvent Analyzer API",
-    description="OS Crash & Hang Telemetry Monitoring and Diagnosis Backend",
-    version="2.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    description="Local Windows crash and hang telemetry diagnosis dashboard",
+    version=settings.app_version,
 )
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_BUILD_DIR = FRONTEND_DIR / "dist"
 
 
 class SimulationRequest(BaseModel):
-    simulation_type: str = "fail_fast"
+    simulation_type: Literal[
+        "fatal_exit", "access_violation", "fail_fast", "breakpoint", "gui_freeze"
+    ] = "fail_fast"
+
+
+_simulation_events: list[CrashEvent] = []
+_simulation_events_lock = Lock()
+
+
+def _build_simulation_event(simulation_type: str) -> CrashEvent:
+    """Create a transparent local fallback when Windows emits no short-lived demo event."""
+    now = datetime.now(timezone.utc)
+    record_id = -int(now.timestamp() * 1000)
+    if simulation_type == "gui_freeze":
+        diagnostic = lookup_diagnostic("APPLICATION_HANG")
+        return CrashEvent(
+            event_id=1002,
+            event_type="HANG",
+            record_id=record_id,
+            time_created=now.isoformat(),
+            app_name="WinEvent GUI Hang Demo",
+            app_version="demo",
+            module_name="UI Message Loop / Thread",
+            exception_code="N/A",
+            exception_symbol=diagnostic.symbol,
+            category=diagnostic.category,
+            category_label=diagnostic.category_label,
+            severity=diagnostic.severity,
+            exception_meaning=diagnostic.meaning,
+            offline_checks=diagnostic.suggested_checks,
+            hang_type="Top level window is idle (simulated)",
+            report_id="SIMULATION:gui_freeze",
+        )
+
+    exception_code = "0xc0000005" if simulation_type == "access_violation" else "0xc0000409"
+    diagnostic = lookup_diagnostic(exception_code)
+    is_access_violation = simulation_type == "access_violation"
+    return CrashEvent(
+        event_id=1000,
+        event_type="CRASH",
+        record_id=record_id,
+        time_created=now.isoformat(),
+        app_name=(
+            "WinEvent Access Violation Demo"
+            if is_access_violation
+            else "WinEvent C-Runtime Demo"
+        ),
+        app_version="demo",
+        module_name="kernel32.dll" if is_access_violation else "ucrtbase.dll",
+        exception_code=exception_code,
+        exception_symbol=diagnostic.symbol,
+        category=diagnostic.category,
+        category_label=(
+            "Access Violation (simulated)"
+            if is_access_violation
+            else "C-Runtime abort (simulated)"
+        ),
+        severity=diagnostic.severity,
+        exception_meaning=(
+            diagnostic.meaning
+            if is_access_violation
+            else "Universal C Runtime abort() จบการทำงานของ process แบบฉุกเฉินเพื่อทดสอบการตรวจจับ Application Error"
+        ),
+        offline_checks=diagnostic.suggested_checks,
+        report_id=f"SIMULATION:{simulation_type}",
+    )
+
+
+def _get_simulation_events(hours: int, event_type: EventFilterType) -> list[CrashEvent]:
+    cutoff = datetime.now(timezone.utc).timestamp() - (hours * 3600)
+    with _simulation_events_lock:
+        recent: list[CrashEvent] = []
+        active: list[CrashEvent] = []
+        for event in _simulation_events:
+            try:
+                event_timestamp = datetime.fromisoformat(
+                    event.time_created.replace("Z", "+00:00")
+                ).timestamp()
+            except ValueError:
+                continue
+            if event_timestamp >= cutoff:
+                active.append(event)
+            if event_timestamp >= cutoff and (
+                event_type == "ALL" or event.event_type == event_type
+            ):
+                recent.append(event)
+        _simulation_events[:] = active
+        return recent
+
+
+def _sort_events(events: list[CrashEvent], sort_by: str) -> list[CrashEvent]:
+    if sort_by == "time_asc":
+        return sorted(events, key=lambda event: event.time_created or "")
+    if sort_by == "app_asc":
+        return sorted(events, key=lambda event: (event.app_name or "").lower())
+    return sorted(events, key=lambda event: event.time_created or "", reverse=True)
+
+
+def _make_stats(events: list[CrashEvent], hours: int) -> DashboardStats:
+    app_counter = Counter(event.app_name for event in events if event.app_name)
+    category_counter = Counter(event.category for event in events if event.category)
+    code_counter = Counter(
+        event.exception_code
+        for event in events
+        if event.exception_code and event.exception_code != "N/A"
+    )
+    return DashboardStats(
+        hours=hours,
+        total_events=len(events),
+        total_crashes=sum(event.event_type == "CRASH" for event in events),
+        total_hangs=sum(event.event_type == "HANG" for event in events),
+        total_critical=sum(event.severity == "CRITICAL" for event in events),
+        total_high=sum(event.severity == "HIGH" for event in events),
+        top_failing_app=app_counter.most_common(1)[0][0] if app_counter else "None",
+        top_failing_app_count=app_counter.most_common(1)[0][1] if app_counter else 0,
+        top_exception_code=code_counter.most_common(1)[0][0]
+        if code_counter
+        else "None",
+        top_apps=[{"name": name, "count": count} for name, count in app_counter.most_common(8)],
+        top_categories=[
+            {"category": category, "count": count}
+            for category, count in category_counter.most_common(8)
+        ],
+    )
+
+
+def _read_dashboard_events(
+    hours: int,
+    limit: int,
+    event_type: EventFilterType,
+    category: Optional[str],
+    app_name: Optional[str],
+    sort_by: str,
+) -> DashboardResponse:
+    # Read once with a larger cap so KPIs describe the whole selected window.
+    result = read_event_log(hours, 500, event_type, app_name)
+    events = result.events + _get_simulation_events(hours, event_type)
+    if event_type != "ALL":
+        events = [event for event in events if event.event_type == event_type]
+    category_value = category if category and category != "ALL" else None
+    if category_value:
+        events = [
+            event
+            for event in events
+            if event.category.upper() == category_value.upper().strip()
+        ]
+    events = _sort_events(events, sort_by)
+    return DashboardResponse(
+        events=events[:limit],
+        stats=_make_stats(events, hours),
+        extractor=result.metadata,
+        filters={
+            "hours": hours,
+            "type": event_type,
+            "category": category_value,
+            "app": app_name,
+            "sort_by": sort_by,
+            "limit": limit,
+        },
+        scanned_at=datetime.now(timezone.utc),
+    )
 
 
 @app.get("/api/system-info")
 async def get_system_info():
-    """Returns local host environment and telemetry engine status."""
+    """Return local capabilities without claiming a successful scan."""
     return {
+        "app_version": settings.app_version,
         "os_name": f"{platform.system()} {platform.release()} (Build {platform.version()})",
         "machine_name": platform.node(),
         "python_version": platform.python_version(),
-        "engine_mode": "pywin32 (Native C-API)" if HAS_PYWIN32 else "PowerShell Fallback",
-        "has_native_api": HAS_PYWIN32,
+        "native_api_available": HAS_PYWIN32,
+        "ai_configured": settings.ai_configured,
+        "cache_ready": cache.is_ready(),
         "log_channel": "Application",
         "monitored_events": [
             {"id": 1000, "name": "Application Error", "type": "CRASH"},
             {"id": 1001, "name": "Windows Error Reporting", "type": "CRASH"},
-            {"id": 1002, "name": "Application Hang", "type": "HANG"}
-        ]
+            {"id": 1002, "name": "Application Hang", "type": "HANG"},
+        ],
     }
 
 
-@app.get("/api/stats")
-async def get_system_stats(
-    hours: int = Query(default=168, ge=1, le=720)
+@app.get("/api/dashboard", response_model=DashboardResponse)
+async def get_dashboard(
+    hours: int = Query(default=48, ge=1, le=720),
+    limit: int = Query(default=100, ge=1, le=500),
+    type: EventFilterType = Query(default="ALL"),
+    category: Optional[str] = Query(default=None),
+    app: Optional[str] = Query(default=None),
+    sort_by: str = Query(default="time_desc"),
 ):
-    """Computes summary KPI metrics across the requested time window."""
-    loop = asyncio.get_event_loop()
-    events = await loop.run_in_executor(None, get_crash_events, hours, 500, "ALL", None)
+    return await asyncio.to_thread(
+        _read_dashboard_events, hours, limit, type, category, app, sort_by
+    )
 
-    total = len(events)
-    crashes = sum(1 for e in events if e.event_type == "CRASH")
-    hangs = sum(1 for e in events if e.event_type == "HANG")
 
-    app_counter = Counter(e.app_name for e in events if e.app_name)
-    top_apps = [{"name": name, "count": count} for name, count in app_counter.most_common(8)]
-
-    cat_counter = Counter(e.category for e in events if e.category)
-    top_categories = [{"category": cat, "count": count} for cat, count in cat_counter.most_common(6)]
-
-    code_counter = Counter(e.exception_code for e in events if e.exception_code and e.exception_code != "N/A")
-    top_code = code_counter.most_common(1)[0][0] if code_counter else "None"
-
-    return {
-        "hours": hours,
-        "total_events": total,
-        "total_crashes": crashes,
-        "total_hangs": hangs,
-        "top_failing_app": top_apps[0]["name"] if top_apps else "None",
-        "top_failing_app_count": top_apps[0]["count"] if top_apps else 0,
-        "top_exception_code": top_code,
-        "top_apps": top_apps,
-        "top_categories": top_categories,
-    }
+@app.get("/api/stats", response_model=DashboardStats)
+async def get_system_stats(hours: int = Query(default=168, ge=1, le=720)):
+    snapshot = await asyncio.to_thread(
+        _read_dashboard_events, hours, 500, "ALL", None, None, "time_desc"
+    )
+    return snapshot.stats
 
 
 @app.get("/api/events")
 async def fetch_events(
     hours: int = Query(default=48, ge=1, le=720),
     limit: int = Query(default=100, ge=1, le=500),
-    type: Literal["ALL", "CRASH", "HANG"] = Query(default="ALL"),
+    type: EventFilterType = Query(default="ALL"),
     category: Optional[str] = Query(default=None),
     app: Optional[str] = Query(default=None),
-    sort_by: Optional[str] = Query(default="time_desc"),
+    sort_by: str = Query(default="time_desc"),
 ):
-    """Retrieves normalized Crash and Hang events with rich multi-facet filtering."""
-    try:
-        # Normalize parameter values if called directly as Python function without FastAPI DI
-        h_val = hours if isinstance(hours, int) else 48
-        l_val = limit if isinstance(limit, int) else 100
-        t_val = type if isinstance(type, str) else "ALL"
-        c_val = category if isinstance(category, str) and category != "ALL" else None
-        a_val = app if isinstance(app, str) and app.strip() else None
-        s_val = sort_by if isinstance(sort_by, str) else "time_desc"
+    snapshot = await asyncio.to_thread(
+        _read_dashboard_events, hours, limit, type, category, app, sort_by
+    )
+    return {
+        "total": snapshot.stats.total_events,
+        "filters": snapshot.filters,
+        "extractor": snapshot.extractor,
+        "events": [event.model_dump(mode="json") for event in snapshot.events],
+    }
 
-        loop = asyncio.get_event_loop()
-        events = await loop.run_in_executor(
-            None, get_crash_events, h_val, l_val, t_val, a_val
-        )
 
-        # Apply Category Filter if specified
-        if c_val:
-            cat_upper = c_val.upper().strip()
-            events = [e for e in events if e.category.upper() == cat_upper]
-
-        # Apply Sorting
-        if s_val == "time_asc":
-            events.sort(key=lambda e: e.time_created or "")
-        elif s_val == "app_asc":
-            events.sort(key=lambda e: (e.app_name or "").lower())
-        else:  # time_desc
-            events.sort(key=lambda e: e.time_created or "", reverse=True)
-
-        return {
-            "total": len(events),
-            "filters": {
-                "hours": h_val,
-                "type": t_val,
-                "category": c_val,
-                "app": a_val,
-                "sort_by": s_val,
-                "limit": l_val
-            },
-            "events": [e.model_dump() for e in events]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/api/analyze", response_model=DiagnosisResponse)
+async def analyze_event(request: AnalyzeRequest):
+    return await asyncio.to_thread(
+        diagnosis_service.diagnose, request.event, request.force_refresh
+    )
 
 
 @app.post("/api/simulate")
-async def trigger_simulation(req: SimulationRequest):
-    """Safely simulates an isolated crash or hang event in a child process."""
-    valid_types = ["fatal_exit", "fail_fast", "breakpoint", "gui_freeze"]
-    if req.simulation_type not in valid_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid simulation type. Choose from: {valid_types}"
-        )
-
+async def trigger_simulation(request: SimulationRequest):
     sim_script = PROJECT_ROOT / "scripts" / "crash_simulator.py"
-    
     try:
-        proc = await asyncio.create_subprocess_exec(
+        process = await asyncio.create_subprocess_exec(
             sys.executable,
             str(sim_script),
             "--type",
-            req.simulation_type,
+            request.simulation_type,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
-        
+        stdout, stderr = await process.communicate()
+        demo_event = None
+        message = "Simulation completed. Windows Event Log may need a moment to update."
+        if process.returncode == 0 and request.simulation_type == "gui_freeze":
+            demo_event = _build_simulation_event(request.simulation_type)
+            with _simulation_events_lock:
+                _simulation_events.append(demo_event)
+            message = (
+                "Simulation completed. Windows did not emit a short-lived Event ID 1002, "
+                "so a clearly labeled local demo incident was added."
+            )
         return {
-            "status": "success",
-            "simulation_type": req.simulation_type,
-            "exit_code": proc.returncode,
-            "message": "Simulation completed. Windows Event Log has been updated.",
-            "output": stdout.decode("utf-8", errors="replace")
+            "status": "success" if process.returncode == 0 else "completed_with_error",
+            "simulation_type": request.simulation_type,
+            "exit_code": process.returncode,
+            "message": message,
+            "demo_event": demo_event.model_dump(mode="json") if demo_event else None,
+            "output": stdout.decode("utf-8", errors="replace"),
+            "error": stderr.decode("utf-8", errors="replace"),
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {exc}") from exc
 
 
-# Serve Frontend static assets
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+if FRONTEND_BUILD_DIR.exists():
+    # Only expose the Vite production output. Source files and node_modules stay local.
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_BUILD_DIR)), name="static")
 
 
 @app.get("/")
 async def serve_index():
-    """Serves the main single-page application dashboard."""
-    index_file = FRONTEND_DIR / "index.html"
+    index_file = FRONTEND_BUILD_DIR / "index.html"
     if index_file.exists():
         return FileResponse(str(index_file))
-    return JSONResponse(
-        status_code=404,
-        content={"message": "Frontend index.html not found"}
+    return HTMLResponse(
+        status_code=503,
+        content="""<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>WinEvent Analyzer - Build required</title>
+<style>body{font-family:system-ui,sans-serif;background:#07101d;color:#e2e8f0;display:grid;place-items:center;min-height:100vh;margin:0}.card{max-width:620px;padding:32px;border:1px solid #334155;border-radius:18px;background:#0c1728}code{display:block;margin-top:18px;padding:14px;border-radius:10px;background:#020617;color:#67e8f9;white-space:pre-wrap}</style></head>
+<body><main class="card"><h1>Frontend build ยังไม่พร้อม</h1><p>ติดตั้ง dependencies และ build React frontend ก่อนเปิดระบบ:</p><code>cd frontend
+npm install
+npm run build
+cd ..
+run.bat</code></main></body></html>""",
     )
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app:app", host="127.0.0.1", port=8000, reload=True)
+
+    uvicorn.run("backend.app:app", host="127.0.0.1", port=8000)

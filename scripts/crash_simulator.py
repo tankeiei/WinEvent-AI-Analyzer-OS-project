@@ -20,10 +20,24 @@ SIMULATION_PAYLOADS = {
     "fatal_exit": {
         "event_id": 1000,
         "type": "CRASH",
-        "code": "0x40000015",
-        "symbol": "STATUS_FATAL_APP_EXIT",
-        "description": "Calling C-runtime abort() inside Python to trigger emergency app termination",
-        "cmd": [sys.executable, "-c", "import ctypes; ctypes.cdll.msvcrt.abort()"]
+        "code": "0xc0000409",
+        "symbol": "STATUS_STACK_BUFFER_OVERRUN",
+        "description": "Calling the Windows Universal C Runtime abort() to trigger a real Application Error event",
+        "cmd": [
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "Add-Type @\"\nusing System;\nusing System.Runtime.InteropServices;\npublic static class NativeAbort {\n    [DllImport(\"ucrtbase.dll\", CallingConvention=CallingConvention.Cdecl)]\n    public static extern void abort();\n}\n\"@; [NativeAbort]::abort()"
+        ]
+    },
+    "access_violation": {
+        "event_id": 1000,
+        "type": "CRASH",
+        "code": "0xc0000005",
+        "symbol": "STATUS_ACCESS_VIOLATION",
+        "description": "Raising a native access violation in an isolated PowerShell child process",
+        "cmd": [
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class NativeAccessViolation{[DllImport(\"kernel32.dll\")] public static extern void RaiseException(uint code,uint flags,uint arguments,IntPtr argumentList);}'; [NativeAccessViolation]::RaiseException(3221225477, 0, 0, [IntPtr]::Zero)"
+        ]
     },
     "fail_fast": {
         "event_id": 1000,
