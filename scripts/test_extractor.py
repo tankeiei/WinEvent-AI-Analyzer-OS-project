@@ -15,14 +15,13 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from backend.extractor.event_reader import get_crash_events, HAS_PYWIN32
+from backend.extractor.event_reader import read_event_log
 
 
 def run_test(hours: int = 48, limit: int = 10, event_type: str = "ALL", app: str = None):
     print("=" * 86)
     print("  WinEvent Analyzer - Phase 1 OS Extraction Test (Crash & Hang)")
     print("=" * 86)
-    print(f"[*] Engine Mode : {'pywin32 (Native C-API)' if HAS_PYWIN32 else 'PowerShell Fallback'}")
     print(f"[*] Time Window : Last {hours} hours")
     print(f"[*] Event Filter: {event_type} (ID 1000/1001/1002)")
     print(f"[*] Max Limit   : {limit} events")
@@ -31,7 +30,12 @@ def run_test(hours: int = 48, limit: int = 10, event_type: str = "ALL", app: str
     print("[*] Querying Windows Event Log (Channel: Application)...")
     print("-" * 86)
 
-    events = get_crash_events(hours=hours, max_events=limit, event_type=event_type, app_name=app)
+    result = read_event_log(hours=hours, max_events=limit, event_type=event_type, app_name=app)
+    events = result.events
+    print(f"[*] Engine Mode : {result.metadata.engine_used}")
+    print(f"[*] Scan Time   : {result.metadata.duration_ms:.2f} ms")
+    if result.metadata.fallback_reason:
+        print(f"[*] Fallback    : {result.metadata.fallback_reason}")
 
     if not events:
         print("[!] No events found within the specified time window.")
